@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Attendance Register</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f5f5f5; min-height: 100vh; padding: 1rem; color: #111; }
+    .app { max-width: 600px; margin: 0 auto; padding: 1rem 0; }
+    .header { margin-bottom: 1.5rem; }
+    .header h1 { font-size: 22px; font-weight: 500; }
+    .header p { font-size: 14px; color: #666; margin-top: 4px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 1.5rem; }
+    .tab { padding: 8px 16px; border-radius: 8px; border: 0.5px solid #ccc; background: transparent; font-size: 14px; color: #666; cursor: pointer; }
+    .tab.active { background: #eee; color: #111; font-weight: 500; }
+    .card { background: #fff; border: 0.5px solid #ddd; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+    .input-row { display: flex; gap: 8px; margin-bottom: 1rem; }
+    .input-row input { flex: 1; padding: 8px 12px; border: 0.5px solid #ccc; border-radius: 8px; font-size: 14px; }
+    button { padding: 8px 16px; border-radius: 8px; border: 0.5px solid #ccc; background: transparent; font-size: 14px; cursor: pointer; }
+    .student-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid #eee; }
+    .student-row:last-child { border-bottom: none; }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; background: #dbeafe; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #1d4ed8; flex-shrink: 0; }
+    .student-name { flex: 1; font-size: 15px; }
+    .att-btn { padding: 6px 14px; border-radius: 8px; border: 0.5px solid #ccc; font-size: 13px; cursor: pointer; background: transparent; color: #666; }
+    .att-btn.present { background: #dcfce7; color: #166534; border-color: #86efac; }
+    .att-btn.absent { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 1rem; }
+    .metric { background: #f5f5f5; border-radius: 8px; padding: 1rem; }
+    .metric-label { font-size: 13px; color: #666; margin-bottom: 4px; }
+    .metric-value { font-size: 24px; font-weight: 500; }
+    .report-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid #eee; }
+    .report-row:last-child { border-bottom: none; }
+    .progress-bar { flex: 1; height: 6px; background: #eee; border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 99px; background: #86efac; }
+    .pct { font-size: 13px; font-weight: 500; min-width: 36px; text-align: right; }
+    .empty { font-size: 14px; color: #999; text-align: center; padding: 2rem 0; }
+    .delete-btn { background: none; border: none; cursor: pointer; font-size: 16px; color: #999; padding: 4px; }
+    .toast { position: fixed; bottom: 1rem; right: 1rem; background: #dcfce7; color: #166534; border: 0.5px solid #86efac; border-radius: 8px; padding: 8px 16px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Attendance Register</h1>
+    <p id="today-date"></p>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('students')">Students</button>
+    <button class="tab" onclick="showTab('attendance')">Mark attendance</button>
+    <button class="tab" onclick="showTab('reports')">Reports</button>
+  </div>
+  <div id="tab-students">
+    <div class="card">
+      <div class="input-row">
+        <input type="text" id="new-student" placeholder="Enter student name..." onkeydown="if(event.key==='Enter')addStudent()" />
+        <button onclick="addStudent()">Add</button>
+      </div>
+      <div id="student-list"><p class="empty">No students yet. Add one above!</p></div>
+    </div>
+  </div>
+  <div id="tab-attendance" style="display:none">
+    <div class="card">
+      <p style="font-size:13px;color:#666;margin-bottom:.75rem" id="att-date"></p>
+      <div id="att-list"><p class="empty">Add students first!</p></div>
+    </div>
+  </div>
+  <div id="tab-reports" style="display:none">
+    <div class="metric-grid">
+      <div class="metric"><div class="metric-label">Students</div><div class="metric-value" id="r-total">0</div></div>
+      <div class="metric"><div class="metric-label">Present today</div><div class="metric-value" id="r-present">0</div></div>
+      <div class="metric"><div class="metric-label">Avg attendance</div><div class="metric-value" id="r-avg">0%</div></div>
+    </div>
+    <div class="card"><div id="report-list"><p class="empty">No data yet!</p></div></div>
+  </div>
+</div>
+<div class="toast" id="toast">Data saved!</div>
+<script>
+  let students = JSON.parse(localStorage.getItem('att_students') || '[]');
+  let attendance = JSON.parse(localStorage.getItem('att_attendance') || '{}');
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+  document.getElementById('att-date').textContent = 'Date: ' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+  function save() {
+    localStorage.setItem('att_students', JSON.stringify(students));
+    localStorage.setItem('att_attendance', JSON.stringify(attendance));
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+  function showTab(tab) {
+    ['students','attendance','reports'].forEach(t => {
+      document.getElementById('tab-'+t).style.display = t===tab ? 'block' : 'none';
+      document.querySelectorAll('.tab')[['students','attendance','reports'].indexOf(t)].classList.toggle('active', t===tab);
+    });
+    if(tab==='attendance') renderAttendance();
+    if(tab==='reports') renderReports();
+  }
+  function getInitials(name) { return name.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
+  function addStudent() {
+    const input = document.getElementById('new-student');
+    const name = input.value.trim();
+    if(!name) return;
+    students.push({id: Date.now(), name});
+    input.value = '';
+    save();
+    renderStudents();
+  }
+  function removeStudent(id) { students = students.filter(s=>s.id!==id); save(); renderStudents(); }
+  function renderStudents() {
+    const list = document.getElementById('student-list');
+    if(!students.length) { list.innerHTML = '<p class="empty">No students yet. Add one above!</p>'; return; }
+    list.innerHTML = students.map(s=>`<div class="student-row"><div class="avatar">${getInitials(s.name)}</div><span class="student-name">${s.name}</span><button class="delete-btn" onclick="removeStudent(${s.id})">✕</button></div>`).join('');
+  }
+  function markAttendance(id, status) {
+    if(!attendance[today]) attendance[today] = {};
+    attendance[today][id] = status;
+    save();
+    renderAttendance();
+  }
+  function renderAttendance() {
+    const list = document.getElementById('att-list');
+    if(!students.length) { list.innerHTML = '<p class="empty">Add students first!</p>'; return; }
+    const todayAtt = attendance[today] || {};
+    list.innerHTML = students.map(s=>{
+      const status = todayAtt[s.id] || null;
+      return `<div class="student-row"><div class="avatar">${getInitials(s.name)}</div><span class="student-name">${s.name}</span><button class="att-btn ${status==='present'?'present':''}" onclick="markAttendance(${s.id},'present')">Present</button><button class="att-btn ${status==='absent'?'absent':''}" onclick="markAttendance(${s.id},'absent')">Absent</button></div>`;
+    }).join('');
+  }
+  function renderReports() {
+    const todayAtt = attendance[today] || {};
+    const presentToday = Object.values(todayAtt).filter(v=>v==='present').length;
+    document.getElementById('r-total').textContent = students.length;
+    document.getElementById('r-present').textContent = presentToday;
+    const allDates = Object.keys(attendance);
+    const list = document.getElementById('report-list');
+    if(!students.length) { document.getElementById('r-avg').textContent='0%'; list.innerHTML='<p class="empty">No data yet!</p>'; return; }
+    const stats = students.map(s=>{
+      let present=0, total=0;
+      allDates.forEach(d=>{ if(attendance[d][s.id]){ total++; if(attendance[d][s.id]==='present') present++; }});
+      const pct = total ? Math.round((present/total)*100) : 0;
+      return {name:s.name, pct};
+    });
+    const avg = Math.round(stats.reduce((a,s)=>a+s.pct,0)/stats.length);
+    document.getElementById('r-avg').textContent = avg+'%';
+    list.innerHTML = stats.map(s=>`<div class="report-row"><div class="avatar" style="width:32px;height:32px;font-size:12px;">${getInitials(s.name)}</div><span style="flex:0 0 100px;font-size:14px;">${s.name}</span><div class="progress-bar"><div class="progress-fill" style="width:${s.pct}%"></div></div><span class="pct">${s.pct}%</span></div>`).join('');
+  }
+  renderStudents();
+</script>
+</body>
+</html>
